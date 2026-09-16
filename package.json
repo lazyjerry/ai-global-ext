@@ -2,7 +2,7 @@
   "name": "ai-global-explorer",
   "displayName": "AI Global Explorer",
   "description": "瀏覽 ai-global 的 skills、agents、commands、rules 與設定，查閱 metadata 並搜尋檔案。",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "publisher": "workjerry",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -44,6 +44,14 @@
         "command": "aiGlobal.refresh",
         "title": "AI Global: 重新整理",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "aiGlobal.exportSkills",
+        "title": "AI Global: 匯出 skill 來源 (JSON)"
+      },
+      {
+        "command": "aiGlobal.importSkills",
+        "title": "AI Global: 匯入 skill 來源 (JSON)"
       }
     ],
     "menus": {
@@ -69,7 +77,7 @@
   },
   "scripts": {
     "build": "node scripts/build.cjs",
-    "test": "node --test test/catalog.test.cjs",
+    "test": "node --test test/catalog.test.cjs test/cli.test.cjs",
     "test:ui": "node test/ui.cjs",
     "test:integration": "npm run build && node test/integration.cjs",
     "format:check": "prettier --check src media scripts test package.json",

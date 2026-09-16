@@ -14,6 +14,15 @@ exports.run = async () => {
       file,
       "---\nname: Host Example\n---\nDistinctive content",
     );
+    await fs.mkdir(path.join(root, "v-skills/a/b/c"), { recursive: true });
+    await fs.writeFile(
+      path.join(root, "v-skills/a/b/c/SKILL.md"),
+      "---\nname: Host Skill\n---",
+    );
+    await fs.writeFile(
+      path.join(root, "source.md"),
+      `https://github.com/a/b|skill|${path.join(root, "v-skills/a/b/c")}\n`,
+    );
     await vscode.workspace
       .getConfiguration("aiGlobal")
       .update("rootPath", root, vscode.ConfigurationTarget.Global);
@@ -24,7 +33,23 @@ exports.run = async () => {
     const explorer = await extension.activate();
     await vscode.commands.executeCommand("aiGlobal.open");
     await explorer.refresh();
-    assert.equal(explorer.catalog.entries[0].name, "Host Example");
+    assert.equal(explorer.catalog.entries[0].name, "Host Skill");
+    const exported = vscode.Uri.file(path.join(root, "export.json"));
+    assert.equal(await explorer.exportSkills(exported), exported.fsPath);
+    const data = JSON.parse(await fs.readFile(exported.fsPath, "utf8"));
+    assert.deepEqual(data.skills, [
+      {
+        name: "Host Skill",
+        path: "a/b/c",
+        repo: "https://github.com/a/b",
+        status: "未投影",
+      },
+    ]);
+    // 來源不是 ~/.ai-global 時拒絕匯入，不會執行 CLI。
+    assert.match(
+      (await explorer.importSkills(exported)).error,
+      /~\/\.ai-global/,
+    );
     await explorer.receive({ type: "open", file, line: 4 });
     assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, file);
     assert.equal(vscode.window.activeTextEditor.selection.active.line, 3);
@@ -45,7 +70,7 @@ exports.run = async () => {
     await fs.rm(empty, { recursive: true, force: true });
     assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, file);
     console.log(
-      "Extension activation, view registration, catalog, editor navigation and install detection passed.",
+      "Extension activation, view registration, catalog, skill export, import guard, editor navigation and install detection passed.",
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });

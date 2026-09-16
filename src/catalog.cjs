@@ -14,6 +14,7 @@ const CATEGORIES = [
 const SKIP = new Set([".git", "node_modules", "backups", "out", ".DS_Store"]);
 const MAX_BYTES = 1024 * 1024;
 const README_URL = "https://github.com/lazyjerry/ai-global#readme";
+const SKILLS_FORMAT = "ai-global-explorer/skills";
 // ai-global 安裝後根目錄至少會有其中一項；全部缺少視為尚未安裝或路徑設錯。
 const INSTALL_MARKERS = [
   "ai-global",
@@ -238,6 +239,8 @@ async function scan(root) {
         warning: [data.warning, readWarning].filter(Boolean).join("；"),
         relative: path.relative(root, file),
         source: source?.url || (inVSkills && skill ? relativeSkill : "本機"),
+        repo: source?.url || "",
+        vpath: inVSkills && skill ? relativeSkill : "",
         status: skill
           ? isDisabled
             ? "停用"
@@ -375,6 +378,53 @@ async function search(
   }
   return { results, warnings, truncated: false };
 }
+// 匯出只涵蓋 Skills：CLI 只有 add-skill 能依 source.md 重裝，其他分類沒有對應指令。
+function exportSkills(catalog) {
+  return {
+    format: SKILLS_FORMAT,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    root: contractHome(catalog.root),
+    skills: catalog.entries
+      .filter((entry) => entry.category === "Skills")
+      .map((entry) => ({
+        name: entry.name,
+        path: entry.vpath,
+        repo: entry.repo || null,
+        status: entry.status,
+      }))
+      .sort((a, b) => a.path.localeCompare(b.path)),
+  };
+}
+// add-skill 以 repo 為單位安裝，所以只需去重後的 repo 清單；狀態差異才逐筆 disable／enable。
+function importPlan(data, catalog) {
+  if (!data || data.format !== SKILLS_FORMAT || !Array.isArray(data.skills))
+    throw new Error(`不是 ${SKILLS_FORMAT} 格式的匯出檔`);
+  if (data.version !== 1)
+    throw new Error(`不支援的匯出檔版本：${data.version}`);
+  const local = new Map(
+    catalog.entries
+      .filter((entry) => entry.category === "Skills" && entry.vpath)
+      .map((entry) => [entry.vpath, entry.status]),
+  );
+  const repos = [],
+    disable = [],
+    enable = [],
+    skipped = [];
+  for (const skill of data.skills) {
+    if (!skill || typeof skill !== "object") continue;
+    const { name = "", path: vpath = "", repo, status } = skill;
+    if (typeof repo !== "string" || !repo) {
+      skipped.push({ name, path: vpath });
+      continue;
+    }
+    if (!repos.includes(repo)) repos.push(repo);
+    if (!vpath) continue;
+    if (status === "停用" && local.get(vpath) !== "停用") disable.push(vpath);
+    if (status === "啟用" && local.get(vpath) === "停用") enable.push(vpath);
+  }
+  return { repos, disable, enable, skipped };
+}
 module.exports = {
   scan,
   search,
@@ -384,6 +434,9 @@ module.exports = {
   expandHome,
   contractHome,
   installed,
+  exportSkills,
+  importPlan,
   CATEGORIES,
   README_URL,
+  SKILLS_FORMAT,
 };

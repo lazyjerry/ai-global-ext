@@ -117,6 +117,16 @@ const { CATEGORIES, README_URL } = require("../src/catalog.cjs");
       "openRoot",
     );
     assert.equal(await page.locator("#root").isVisible(), false, "選單應關閉");
+    for (const id of ["exportSkills", "importSkills"]) {
+      await page.locator("#menu summary").click();
+      await page.locator(`#${id}`).click();
+      assert.equal(await page.evaluate(() => window.messages.at(-1).type), id);
+      assert.equal(
+        await page.locator("#root").isVisible(),
+        false,
+        "選單應關閉",
+      );
+    }
     await page.locator(".card").first().click();
     await post({
       type: "detail",
@@ -219,7 +229,7 @@ const { CATEGORIES, README_URL } = require("../src/catalog.cjs");
     assert.equal(await page.locator(".card").count(), 1);
     assert.deepEqual(errors, []);
     console.log(
-      "UI: filtering, metadata table, escaped content, search, stale results, editor messages, install notice, settings menu, status by category, tooltips and responsive layout passed.",
+      "UI: filtering, metadata table, escaped content, search, stale results, editor messages, install notice, settings menu, export/import buttons, status by category, tooltips and responsive layout passed.",
     );
   } finally {
     await browser.close();

@@ -10,6 +10,9 @@ const {
   readText,
   installed,
   contractHome,
+  exportSkills,
+  importPlan,
+  SKILLS_FORMAT,
 } = require("../src/catalog.cjs");
 async function fixture(t) {
   const root = await fs.realpath(
@@ -201,4 +204,95 @@ test("安裝偵測：根目錄不存在、空資料夾或一般檔案都視為�
     contractHome(os.homedir() + "-other/x"),
     os.homedir() + "-other/x",
   );
+});
+test("匯出只含 Skills 並依 path 排序；匯入計畫依 repo 去重、依本機狀態推導 disable／enable、略過無來源者", async (t) => {
+  const { root, put } = await fixture(t);
+  await put("v-skills/a/b/group/one/SKILL.md", "---\nname: One\n---");
+  await put("v-skills/a/b/two/SKILL.md", "---\nname: Two\n---");
+  await put("v-skills/c/d/three/SKILL.md", "---\nname: Three\n---");
+  await put("v-skills/manual/local/SKILL.md", "---\nname: Local\n---");
+  await put("skills/.system/builtin/SKILL.md", "builtin");
+  await fs.symlink("../v-skills/a/b/two", path.join(root, "skills/two"));
+  await fs.symlink("../v-skills/manual/local", path.join(root, "skills/local"));
+  await put("disable-skills.md", "c/d/three\n");
+  await put(
+    "source.md",
+    [
+      `https://github.com/a/b|skill|${path.join(root, "v-skills/a/b/group/one")}`,
+      `https://github.com/a/b|skill|${path.join(root, "v-skills/a/b/two")}`,
+      `https://github.com/c/d|skill|${path.join(root, "v-skills/c/d/three")}`,
+    ].join("\n") + "\n",
+  );
+  await put("agents/helper.md", "agent");
+  const catalog = await scan(root);
+  const exported = exportSkills(catalog);
+  assert.equal(exported.format, SKILLS_FORMAT);
+  assert.equal(exported.version, 1);
+  assert.deepEqual(
+    exported.skills.map((skill) => [
+      skill.path,
+      skill.name,
+      skill.repo,
+      skill.status,
+    ]),
+    [
+      ["", "builtin", null, "啟用"],
+      ["a/b/group/one", "One", "https://github.com/a/b", "未投影"],
+      ["a/b/two", "Two", "https://github.com/a/b", "啟用"],
+      ["c/d/three", "Three", "https://github.com/c/d", "停用"],
+      ["manual/local", "Local", null, "啟用"],
+    ],
+  );
+  assert.throws(() => importPlan({ format: "other" }, catalog), /格式/);
+  assert.throws(() => importPlan({ ...exported, version: 2 }, catalog), /版本/);
+  // 同一份匯出再匯入：狀態一致，不需要 disable／enable。
+  assert.deepEqual(importPlan(exported, catalog), {
+    repos: ["https://github.com/a/b", "https://github.com/c/d"],
+    disable: [],
+    enable: [],
+    skipped: [
+      { name: "builtin", path: "" },
+      { name: "Local", path: "manual/local" },
+    ],
+  });
+  const changed = {
+    ...exported,
+    skills: [
+      {
+        name: "Two",
+        path: "a/b/two",
+        repo: "https://github.com/a/b",
+        status: "停用",
+      },
+      {
+        name: "Three",
+        path: "c/d/three",
+        repo: "https://github.com/c/d",
+        status: "啟用",
+      },
+      {
+        name: "New",
+        path: "e/f/new",
+        repo: "https://github.com/e/f",
+        status: "停用",
+      },
+      {
+        name: "Stay",
+        path: "e/f/stay",
+        repo: "https://github.com/e/f",
+        status: "未投影",
+      },
+      null,
+    ],
+  };
+  assert.deepEqual(importPlan(changed, catalog), {
+    repos: [
+      "https://github.com/a/b",
+      "https://github.com/c/d",
+      "https://github.com/e/f",
+    ],
+    disable: ["a/b/two", "e/f/new"],
+    enable: ["c/d/three"],
+    skipped: [],
+  });
 });

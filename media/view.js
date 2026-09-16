@@ -121,7 +121,14 @@ $("clear").addEventListener("click", () => {
   $("query").value = "";
   runSearch();
 });
-for (const id of ["refresh", "settings", "openRoot", "openReadme"])
+for (const id of [
+  "refresh",
+  "settings",
+  "openRoot",
+  "openReadme",
+  "exportSkills",
+  "importSkills",
+])
   $(id).addEventListener("click", () => {
     $("menu").open = false;
     send(id);

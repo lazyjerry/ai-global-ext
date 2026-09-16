@@ -16,7 +16,11 @@
         <strong>AI Global</strong>
         <div class="actions">
           <details id="menu" class="menu">
-            <summary title="查看資料來源、開啟資料夾或開啟設定">設定 ▾</summary>
+            <summary
+              title="查看資料來源、開啟資料夾、開啟設定，或匯出／匯入 skill"
+            >
+              設定 ▾
+            </summary>
             <div class="menu-panel">
               <p class="muted">資料來源</p>
               <p id="root"></p>
@@ -27,6 +31,14 @@
               </button>
               <button id="settings" type="button">
                 開啟設定<small>編輯 aiGlobal.rootPath</small>
+              </button>
+              <button id="exportSkills" type="button">
+                匯出 skill<small>把 skill 來源清單存成 JSON</small>
+              </button>
+              <button id="importSkills" type="button">
+                匯入 skill<small
+                  >依 JSON 執行 ai-global add-skill 並 relink</small
+                >
               </button>
             </div>
           </details>

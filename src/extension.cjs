@@ -2,6 +2,7 @@ const vscode = require("vscode");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const os = require("node:os");
 const {
   scan,
   search,
@@ -9,9 +10,12 @@ const {
   installed,
   expandHome,
   contractHome,
+  exportSkills,
+  importPlan,
   CATEGORIES,
   README_URL,
 } = require("./catalog.cjs");
+const { runImport } = require("./cli.cjs");
 
 class Explorer {
   constructor(context) {
@@ -20,6 +24,8 @@ class Explorer {
     this.generation = 0;
     this.searchGeneration = 0;
     this.allowed = new Map();
+    this.channel = vscode.window.createOutputChannel("AI Global Explorer");
+    context.subscriptions.push(this.channel);
   }
   async resolveWebviewView(view) {
     this.view = view;
@@ -137,6 +143,130 @@ class Explorer {
       { forceNewWindow: true },
     );
   }
+  async exportSkills(target) {
+    if (!this.catalog.entries.length) {
+      vscode.window.showWarningMessage("尚未讀到 ai-global 資料，無法匯出。");
+      return;
+    }
+    target ??= await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(
+        path.join(os.homedir(), "ai-global-skills.json"),
+      ),
+      filters: { JSON: ["json"] },
+      saveLabel: "匯出",
+    });
+    if (!target) return;
+    const data = exportSkills(this.catalog);
+    await fs.writeFile(target.fsPath, JSON.stringify(data, null, 2) + "\n");
+    vscode.window
+      .showInformationMessage(
+        `已匯出 ${data.skills.length} 個 skill 到 ${contractHome(target.fsPath)}`,
+        "開啟檔案",
+      )
+      .then((choice) => {
+        if (choice) return vscode.window.showTextDocument(target);
+      });
+    return target.fsPath;
+  }
+  // CLI 固定操作 $HOME/.ai-global，來源改到別處時匯入會裝錯地方，直接拒絕。
+  async importSkills(source) {
+    if (this.importing) return { error: "匯入進行中" };
+    const home = path.join(os.homedir(), ".ai-global");
+    const same =
+      this.root &&
+      (await fs.realpath(this.root).catch(() => "")) ===
+        (await fs.realpath(home).catch(() => home));
+    if (!same) {
+      const error = `匯入只支援 ~/.ai-global（ai-global CLI 固定操作家目錄），目前來源為 ${contractHome(this.root || "")}。`;
+      vscode.window.showErrorMessage(error);
+      return { error };
+    }
+    source ??= (
+      await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        filters: { JSON: ["json"] },
+        openLabel: "匯入",
+      })
+    )?.[0];
+    if (!source) return;
+    let plan;
+    try {
+      plan = importPlan(
+        JSON.parse(await fs.readFile(source.fsPath, "utf8")),
+        this.catalog,
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(`無法匯入：${error.message}`);
+      return { error: error.message };
+    }
+    const skipped = plan.skipped.length
+      ? `略過 ${plan.skipped.length} 個沒有 GitHub 來源的 skill：${plan.skipped.map((skill) => skill.name).join("、")}`
+      : "";
+    if (!plan.repos.length && !plan.disable.length && !plan.enable.length) {
+      vscode.window.showInformationMessage(
+        ["沒有可匯入的項目。", skipped].filter(Boolean).join(" "),
+      );
+      return { plan };
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `匯入 ${plan.repos.length} 個 repo 的 skill？`,
+      {
+        modal: true,
+        detail: [
+          ...plan.repos.map((repo) => `• ${repo}`),
+          `停用 ${plan.disable.length} 個、啟用 ${plan.enable.length} 個。`,
+          skipped,
+          "會執行 ai-global add-skill 並 relink；既有 skill 會被覆蓋，不會刪除任何 skill。",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      },
+      "匯入",
+    );
+    if (choice !== "匯入") return { plan };
+    this.importing = true;
+    let steps = [];
+    try {
+      this.channel.clear();
+      this.channel.show(true);
+      steps = await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "AI Global：匯入 skill",
+          cancellable: true,
+        },
+        (progress, token) =>
+          runImport(plan, {
+            root: this.root,
+            cancelled: () => token.isCancellationRequested,
+            log: (text) => {
+              this.channel.append(text);
+              const command = text.match(/^\n\$ (.+)\n$/);
+              if (command) progress.report({ message: command[1] });
+            },
+          }),
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(`匯入失敗：${error.message}`);
+      return { error: error.message, plan };
+    } finally {
+      this.importing = false;
+      await this.refresh();
+    }
+    const failed = steps.filter((step) => step.code !== 0);
+    if (failed.length)
+      vscode.window
+        .showWarningMessage(
+          `匯入完成，但 ${failed.length} 個步驟失敗：${failed.map((step) => step.args.join(" ")).join("；")}`,
+          "查看輸出",
+        )
+        .then((choice) => choice && this.channel.show());
+    else
+      vscode.window.showInformationMessage(
+        `已匯入 ${plan.repos.length} 個 repo 的 skill，投影已重建。${skipped}`,
+      );
+    return { plan, steps };
+  }
   async receive(message) {
     if (!message || typeof message.type !== "string") return;
     if (message.type === "openReadme") return this.openReadme();
@@ -144,6 +274,8 @@ class Explorer {
       return this.refresh();
     if (message.type === "settings") return this.openSettings();
     if (message.type === "openRoot") return this.openRoot();
+    if (message.type === "exportSkills") return this.exportSkills();
+    if (message.type === "importSkills") return this.importSkills();
     if (message.type === "detail") {
       const entry = this.catalog.entries.find((item) => item.id === message.id);
       if (!entry) return;
@@ -210,6 +342,12 @@ function activate(context) {
     ),
     vscode.commands.registerCommand("aiGlobal.refresh", () =>
       explorer.refresh(),
+    ),
+    vscode.commands.registerCommand("aiGlobal.exportSkills", () =>
+      explorer.exportSkills(),
+    ),
+    vscode.commands.registerCommand("aiGlobal.importSkills", () =>
+      explorer.importSkills(),
     ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("aiGlobal.rootPath")) explorer.refresh();
