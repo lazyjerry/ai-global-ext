@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src {{csp}}; script-src 'nonce-{{nonce}}';"
+    />
+    <link rel="stylesheet" href="{{style}}" />
+    <title>AI Global Explorer</title>
+  </head>
+  <body>
+    <aside id="controls" aria-label="篩選與搜尋">
+      <header>
+        <strong>AI Global</strong>
+        <div class="actions">
+          <details id="menu" class="menu">
+            <summary title="查看資料來源、開啟資料夾或開啟設定">設定 ▾</summary>
+            <div class="menu-panel">
+              <p class="muted">資料來源</p>
+              <p id="root"></p>
+              <button id="openRoot" type="button">
+                開啟資料夾<small
+                  >在新的 VS Code 視窗開啟 ai-global 根目錄</small
+                >
+              </button>
+              <button id="settings" type="button">
+                開啟設定<small>編輯 aiGlobal.rootPath</small>
+              </button>
+            </div>
+          </details>
+          <button
+            id="refresh"
+            title="重新掃描 ai-global 資料（CLI 或外部程式改過檔案後使用）"
+          >
+            重新整理
+          </button>
+        </div>
+      </header>
+      <section id="missing" role="alert" hidden>
+        <strong>尚未偵測到 ai-global</strong>
+        <p id="missingText"></p>
+        <p>
+          請先依 README 安裝 ai-global，或在設定中指定既有的 ai-global
+          根目錄：<br /><a id="readme" href="{{readme}}">{{readme}}</a>
+        </p>
+        <div class="actions">
+          <button type="button" id="openReadme">查看安裝說明</button
+          ><button type="button" id="missingSettings">開啟設定</button>
+        </div>
+      </section>
+      <form id="searchForm">
+        <div class="filters">
+          <label
+            title="依資源類型篩選清單：Skills、Agents、Commands、Rules、全域指示、設定與其他；括號為各分類的項目數。"
+            >分類<select id="category">
+              <option value="">全部分類</option>
+            </select></label
+          ><label
+            title="只有 Skills 有狀態：啟用（已投影到 skills/）、停用（列於 disable-skills.md）、未投影（只在 v-skills/）。分類選 Skills 時才能篩選，其他分類沒有啟用／停用機制。"
+            >狀態<select id="status" disabled>
+              <option value="">全部狀態</option>
+            </select></label
+          >
+        </div>
+        <div class="filters">
+          <label
+            title="檔名／名稱：比對相對路徑與項目名稱。內文：不分大小寫的字面比對，讀取主檔與附屬檔案內容（單檔上限 1 MiB），不支援正規表示式。"
+            >搜尋方式<select id="mode">
+              <option value="name">檔名／名稱</option>
+              <option value="content">內文</option>
+            </select></label
+          ><label
+            title="目前分類：搜尋符合上方分類與狀態篩選的所有項目。所選項目：只搜尋清單中目前選取的項目及其附屬檔案。"
+            >範圍<select id="scope">
+              <option value="all">目前分類</option>
+              <option value="selected">所選項目</option>
+            </select></label
+          >
+        </div>
+        <div class="search">
+          <input
+            id="query"
+            aria-label="搜尋關鍵字"
+            placeholder="輸入關鍵字，按 Enter 搜尋"
+          /><button type="submit">搜尋</button
+          ><button type="button" id="clear">清除</button>
+        </div>
+      </form>
+      <p id="message" role="status" aria-live="polite"></p>
+      <details id="warnings" hidden>
+        <summary>略過項目與提醒</summary>
+        <pre id="warningText"></pre>
+      </details>
+    </aside>
+    <main>
+      <section aria-label="資源清單"><div id="list"></div></section>
+      <section id="detail" aria-label="項目內容">
+        <p class="muted">選擇項目以查閱 metadata 與內容。</p>
+      </section>
+    </main>
+    <script nonce="{{nonce}}" src="{{script}}"></script>
+  </body>
+</html>

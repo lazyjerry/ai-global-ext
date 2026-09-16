@@ -1,0 +1,88 @@
+{
+  "name": "ai-global-explorer",
+  "displayName": "AI Global Explorer",
+  "description": "瀏覽 ai-global 的 skills、agents、commands、rules 與設定，查閱 metadata 並搜尋檔案。",
+  "version": "0.1.7",
+  "publisher": "workjerry",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiGlobal",
+          "title": "AI Global",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "aiGlobal": [
+        {
+          "type": "webview",
+          "id": "aiGlobal.explorer",
+          "name": "AI Global Explorer"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "aiGlobal.open",
+        "title": "AI Global: 開啟資源瀏覽器"
+      },
+      {
+        "command": "aiGlobal.refresh",
+        "title": "AI Global: 重新整理",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "aiGlobal.refresh",
+          "when": "view == aiGlobal.explorer",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Global Explorer",
+      "properties": {
+        "aiGlobal.rootPath": {
+          "type": "string",
+          "default": "~/.ai-global",
+          "scope": "machine",
+          "description": "ai-global 資料根目錄，支援 ~/ 開頭的路徑。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "test": "node --test test/catalog.test.cjs",
+    "test:ui": "node test/ui.cjs",
+    "test:integration": "npm run build && node test/integration.cjs",
+    "format:check": "prettier --check src media scripts test package.json",
+    "vscode:prepublish": "npm run build",
+    "package:vsix": "vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links"
+  },
+  "dependencies": {
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "playwright": "^1.63.0",
+    "prettier": "^3.0.0"
+  }
+}
