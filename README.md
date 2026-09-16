@@ -10,7 +10,7 @@
 
 ## 安裝與使用
 
-1. 在 VS Code 執行 `Extensions: Install from VSIX...`，選擇 `ai-global-explorer-0.1.7.vsix`。
+1. 在 VS Code 執行 `Extensions: Install from VSIX...`，選擇 `ai-global-explorer-0.1.8.vsix`。
 2. 點左側 Activity Bar 的 **AI Global**，或執行 `AI Global: 開啟資源瀏覽器`。
 3. 預設讀取 `~/.ai-global`。按「設定」下拉可查看目前資料來源路徑（家目錄顯示為 `~`）、「開啟資料夾」在新的 VS Code 視窗開啟該目錄，或「開啟設定」編輯 `aiGlobal.rootPath` 切換來源。「重新整理」重新掃描資料。
    尚未安裝 ai-global（根目錄不存在，或沒有 `ai-global`、`source.md`、`skills/`、`v-skills/`、`agents/`、`commands/`、`rules/` 任一項）時，面板會顯示警告與安裝說明連結 <https://github.com/lazyjerry/ai-global#readme>，並在啟動後跳一次通知；安裝或在設定中指定資料夾後按「重新整理」即可。

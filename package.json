@@ -2,9 +2,10 @@
   "name": "ai-global-explorer",
   "displayName": "AI Global Explorer",
   "description": "瀏覽 ai-global 的 skills、agents、commands、rules 與設定，查閱 metadata 並搜尋檔案。",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "workjerry",
   "license": "MIT",
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.96.0"
   },
