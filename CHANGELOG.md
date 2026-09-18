@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- README 的「匯出 skill」JSON 範例改用通用佔位路徑 `example-org/example-skills`。
+
 ## 0.1.10 — 2026-09-17
 
 - README 安裝說明改為 Marketplace 優先，VSIX 為離線備案，不再寫死版號；移除開發期的本機掃描紀錄。
