@@ -12,6 +12,9 @@ const {
   contractHome,
   exportSkills,
   importPlan,
+  githubRepo,
+  listSection,
+  skippedSummary,
   SKILLS_FORMAT,
 } = require("../src/catalog.cjs");
 async function fixture(t) {
@@ -248,11 +251,12 @@ test("匯出只含 Skills 並依 path 排序；匯入計畫依 repo 去重、依
   // 同一份匯出再匯入：狀態一致，不需要 disable／enable。
   assert.deepEqual(importPlan(exported, catalog), {
     repos: ["https://github.com/a/b", "https://github.com/c/d"],
+    overwrite: ["a/b/group/one", "a/b/two", "c/d/three"],
     disable: [],
     enable: [],
     skipped: [
-      { name: "builtin", path: "" },
-      { name: "Local", path: "manual/local" },
+      { name: "builtin", path: "", reason: "沒有 GitHub 來源" },
+      { name: "Local", path: "manual/local", reason: "沒有 GitHub 來源" },
     ],
   });
   const changed = {
@@ -291,8 +295,108 @@ test("匯出只含 Skills 並依 path 排序；匯入計畫依 repo 去重、依
       "https://github.com/c/d",
       "https://github.com/e/f",
     ],
+    overwrite: ["a/b/group/one", "a/b/two", "c/d/three"],
     disable: ["a/b/two", "e/f/new"],
     enable: ["c/d/three"],
     skipped: [],
   });
+  // 只含 a/b 的匯入檔不會把 c/d 的既有 skill 列為覆蓋對象。
+  assert.deepEqual(
+    importPlan({ ...exported, skills: [changed.skills[0]] }, catalog).overwrite,
+    ["a/b/group/one", "a/b/two"],
+  );
+});
+test("匯入計畫在延伸模組端驗證 repo 與 path，不合法項目略過並附原因", async (t) => {
+  const { root, put } = await fixture(t);
+  await put("v-skills/a/b/group/one/SKILL.md", "---\nname: One\n---");
+  await put(
+    "source.md",
+    `https://github.com/a/b|skill|${path.join(root, "v-skills/a/b/group/one")}\n`,
+  );
+  const catalog = await scan(root);
+  const skill = (name, repo, skillPath, status = "停用") => ({
+    name,
+    repo,
+    path: skillPath,
+    status,
+  });
+  const plan = importPlan(
+    {
+      format: SKILLS_FORMAT,
+      version: 1,
+      skills: [
+        skill("ok", "https://github.com/x/y", "x/y/ok"),
+        skill("evil-host", "https://evil.example/x/y", "x/y/a"),
+        skill("sub-path", "https://github.com/x/y/tree/main/z", "x/y/a"),
+        skill("dot-repo", "https://github.com/x/..", "x/../a"),
+        skill("newline", "https://github.com/x/y\nrelink", "x/y/a"),
+        skill("bare-name", "https://github.com/x/y", "pdf"),
+        skill("other-repo", "https://github.com/x/y", "a/b/group/one"),
+        skill("traversal", "https://github.com/x/y", "x/y/../../a/b/one"),
+        skill("whole-repo", "https://github.com/x/y", "x/y"),
+        skill("local-bucket", "https://github.com/a/b", "a/b/group"),
+        skill("json-bucket", "https://github.com/x/y", "x/y/bucket"),
+        skill("in-bucket", "https://github.com/x/y", "x/y/bucket/leaf", "啟用"),
+        skill("fake\n• 列", 123, ""),
+      ],
+    },
+    catalog,
+  );
+  assert.deepEqual(plan.repos, ["https://github.com/x/y"]);
+  assert.deepEqual(plan.disable, ["x/y/ok"]);
+  assert.deepEqual(plan.enable, []);
+  assert.deepEqual(plan.overwrite, []);
+  assert.deepEqual(
+    plan.skipped.map((item) => [item.name, item.reason]),
+    [
+      ["evil-host", "repo 不是合法的 GitHub 倉庫"],
+      ["sub-path", "repo 不是合法的 GitHub 倉庫"],
+      ["dot-repo", "repo 不是合法的 GitHub 倉庫"],
+      ["newline", "repo 不是合法的 GitHub 倉庫"],
+      ["bare-name", "路徑不是該 repo 底下的 skill 路徑"],
+      ["other-repo", "路徑不是該 repo 底下的 skill 路徑"],
+      ["traversal", "路徑不是該 repo 底下的 skill 路徑"],
+      ["whole-repo", "路徑不是該 repo 底下的 skill 路徑"],
+      ["local-bucket", "路徑是分類而非單一 skill"],
+      ["json-bucket", "路徑是分類而非單一 skill"],
+      ["fake\n• 列", "沒有 GitHub 來源"],
+    ],
+  );
+  // CLI 接受的三種前綴仍可用。
+  for (const repo of [
+    "https://github.com/a/b",
+    "http://github.com/a/b",
+    "github.com/a/b",
+    "a/b",
+  ])
+    assert.equal(githubRepo(repo), "a/b");
+});
+test("確認視窗清單過長時截斷，名稱中的控制字元不會變成新列", () => {
+  const items = Array.from({ length: 13 }, (_, i) => `x/y/s${i}`);
+  const text = listSection("停用", items);
+  assert.equal(text.split("\n").length, 12);
+  assert.match(text, /^停用（13）：\n• x\/y\/s0\n/);
+  assert.match(text, /…另 3 個$/);
+  assert.equal(listSection("停用", []), "");
+  const summary = skippedSummary([
+    { name: "fake\n• 列", path: "", reason: "沒有 GitHub 來源" },
+    ...items.map((name) => ({ name, path: name, reason: "r" })),
+  ]);
+  assert.ok(!summary.includes("\n"));
+  assert.match(
+    summary,
+    /^略過 14 個：fake • 列（沒有 GitHub 來源）、x\/y\/s0（r）/,
+  );
+  assert.match(summary, /另 4 個$/);
+  assert.equal(skippedSummary([]), "");
+});
+test("package.json：資料根目錄只允許 machine 層級，不讀工作區所以宣告支援未受信任工作區", async () => {
+  const manifest = JSON.parse(
+    await fs.readFile(path.join(__dirname, "..", "package.json"), "utf8"),
+  );
+  assert.equal(
+    manifest.contributes.configuration.properties["aiGlobal.rootPath"].scope,
+    "machine",
+  );
+  assert.equal(manifest.capabilities.untrustedWorkspaces.supported, true);
 });

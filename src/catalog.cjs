@@ -396,34 +396,119 @@ function exportSkills(catalog) {
       .sort((a, b) => a.path.localeCompare(b.path)),
   };
 }
+// 前綴與 ai-global CLI 的 not_github_ref／parse_github_ref 相同，再收緊成只收 owner/repo：
+// CLI 本來就拒絕子路徑；repo 名為 . 或 .. 會讓安裝路徑跳出 v-skills/<owner>/。
+function githubRepo(value) {
+  if (typeof value !== "string") return "";
+  const match = value
+    .replace(/^(?:https?:\/\/)?github\.com\//, "")
+    .match(/^([A-Za-z0-9_-]+)\/([A-Za-z0-9_.-]+)$/);
+  if (!match || match[2] === "." || match[2] === "..") return "";
+  return `${match[1]}/${match[2]}`;
+}
+// 匯出的 path 是 v-skills 相對路徑 owner/repo[/bucket]/name，一定落在該 skill 自己的 repo 底下。
+// 不收裸名稱與 . / ..：CLI 的 disable／enable 會把裸名稱當 skill 名稱比對。
+function validVpath(vpath, slug) {
+  return (
+    typeof vpath === "string" &&
+    vpath.startsWith(`${slug}/`) &&
+    vpath
+      .split("/")
+      .every(
+        (part) =>
+          part &&
+          part !== "." &&
+          part !== ".." &&
+          !/[\\\x00-\x1f\x7f]/.test(part),
+      )
+  );
+}
 // add-skill 以 repo 為單位安裝，所以只需去重後的 repo 清單；狀態差異才逐筆 disable／enable。
 function importPlan(data, catalog) {
   if (!data || data.format !== SKILLS_FORMAT || !Array.isArray(data.skills))
     throw new Error(`不是 ${SKILLS_FORMAT} 格式的匯出檔`);
   if (data.version !== 1)
     throw new Error(`不支援的匯出檔版本：${data.version}`);
-  const local = new Map(
-    catalog.entries
-      .filter((entry) => entry.category === "Skills" && entry.vpath)
-      .map((entry) => [entry.vpath, entry.status]),
+  const localSkills = catalog.entries.filter(
+    (entry) => entry.category === "Skills" && entry.vpath,
   );
+  const local = new Map(
+    localSkills.map((entry) => [entry.vpath, entry.status]),
+  );
+  // CLI 的 disable／enable 收到分類路徑會作用在整個分類，必須只留單一 skill。
+  const known = [
+    ...local.keys(),
+    ...data.skills
+      .map((skill) => skill?.path)
+      .filter((p) => typeof p === "string"),
+  ];
+  const isCategory = (vpath) => known.some((p) => p.startsWith(`${vpath}/`));
   const repos = [],
+    slugs = [],
     disable = [],
     enable = [],
     skipped = [];
   for (const skill of data.skills) {
     if (!skill || typeof skill !== "object") continue;
-    const { name = "", path: vpath = "", repo, status } = skill;
+    const { repo, status } = skill;
+    const name = String(skill.name ?? "");
+    const vpath = typeof skill.path === "string" ? skill.path : "";
+    const skip = (reason) => skipped.push({ name, path: vpath, reason });
     if (typeof repo !== "string" || !repo) {
-      skipped.push({ name, path: vpath });
+      skip("沒有 GitHub 來源");
       continue;
     }
-    if (!repos.includes(repo)) repos.push(repo);
+    const slug = githubRepo(repo);
+    if (!slug) {
+      skip("repo 不是合法的 GitHub 倉庫");
+      continue;
+    }
+    if (vpath && !validVpath(vpath, slug)) {
+      skip("路徑不是該 repo 底下的 skill 路徑");
+      continue;
+    }
+    if (vpath && isCategory(vpath)) {
+      skip("路徑是分類而非單一 skill");
+      continue;
+    }
+    if (!repos.includes(repo)) {
+      repos.push(repo);
+      slugs.push(slug);
+    }
     if (!vpath) continue;
     if (status === "停用" && local.get(vpath) !== "停用") disable.push(vpath);
     if (status === "啟用" && local.get(vpath) === "停用") enable.push(vpath);
   }
-  return { repos, disable, enable, skipped };
+  // add-skill 裝在 v-skills/<owner>/<repo>/ 底下，本機已有的同 repo skill 就是會被問「是否覆蓋」的對象。
+  const overwrite = localSkills
+    .map((entry) => entry.vpath)
+    .filter((vpath) => slugs.some((slug) => vpath.startsWith(`${slug}/`)))
+    .sort();
+  return { repos, overwrite, disable, enable, skipped };
+}
+// 確認視窗的清單過長時只列前幾個，其餘以筆數帶過，避免 modal 超出螢幕。
+const LIST_LIMIT = 10;
+function listSection(title, items) {
+  if (!items.length) return "";
+  const shown = items.slice(0, LIST_LIMIT).map((item) => `• ${item}`);
+  if (items.length > LIST_LIMIT)
+    shown.push(`…另 ${items.length - LIST_LIMIT} 個`);
+  return [`${title}（${items.length}）：`, ...shown].join("\n");
+}
+// 名稱來自匯入檔，換行等控制字元會在確認視窗裡偽造出額外的列。
+function displayName(skill) {
+  return String(skill.name || skill.path || "（無名稱）")
+    .replace(/[\x00-\x1f\x7f]/g, " ")
+    .slice(0, 80);
+}
+function skippedSummary(skipped) {
+  if (!skipped.length) return "";
+  const shown = skipped
+    .slice(0, LIST_LIMIT)
+    .map((skill) => `${displayName(skill)}（${skill.reason}）`);
+  if (skipped.length > LIST_LIMIT)
+    shown.push(`另 ${skipped.length - LIST_LIMIT} 個`);
+  return `略過 ${skipped.length} 個：${shown.join("、")}`;
 }
 module.exports = {
   scan,
@@ -436,6 +521,11 @@ module.exports = {
   installed,
   exportSkills,
   importPlan,
+  githubRepo,
+  validVpath,
+  LIST_LIMIT,
+  listSection,
+  skippedSummary,
   CATEGORIES,
   README_URL,
   SKILLS_FORMAT,

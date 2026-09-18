@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.12 — 2026-09-19
+
+安全性修正：
+
+- 匯入 skill 時在擴充端驗證匯入檔：`repo` 必須是 GitHub `owner/repo`（規則同 ai-global CLI，另拒絕子路徑與 `.`／`..`），`path` 必須是該 repo 底下的單一 skill 路徑；裸名稱、整個分類、路徑穿越與非 GitHub 來源都會略過，並在確認視窗與完成訊息列出原因。
+- 不再對「是否覆蓋」自動回答 y。確認視窗列出可能被覆蓋的既有 skill，按「匯入並覆蓋既有 skill」才覆蓋，按「只安裝新的 skill」則既有 skill 保持原狀；沒有既有 skill 時仍是一鍵「匯入」。
+- 確認視窗改列出要安裝的 repo、會覆蓋的 skill、要停用／啟用的路徑（各清單最多 10 筆，其餘顯示「另 N 個」），名稱中的控制字元不會變成額外的列。
+- 執行 `disable`／`enable` 前確認 `v-skills/<path>/SKILL.md` 存在，避免分類路徑讓 CLI 停用整個分類；略過的步驟列在完成訊息。
+- `package.json` 宣告 `capabilities.untrustedWorkspaces.supported: true`：本擴充只讀 `aiGlobal.rootPath`（machine scope），不讀工作區內容。
+
 ## 0.1.11 — 2026-09-19
 
 - README 的「匯出 skill」JSON 範例改用通用佔位路徑 `example-org/example-skills`。

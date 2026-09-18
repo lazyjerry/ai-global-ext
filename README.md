@@ -71,13 +71,13 @@
 
 `path` 是 `v-skills/` 相對路徑，`repo` 來自 `source.md`；沒有安裝紀錄的 skill（例如 `manual/`）為 `null`，匯出仍列出以便盤點，但無法匯入。
 
-**匯入**讀取這種 JSON，先以 modal 列出將安裝的 repo 與狀態變更，確認後依序執行 ai-global CLI，輸出顯示在 Output 面板的「AI Global Explorer」，完成後自動重新整理：
+**匯入**讀取這種 JSON，先在擴充端驗證每一筆：`repo` 必須是 `https://github.com/<owner>/<repo>`（或 CLI 接受的 `github.com/…`、`owner/repo` 形式，不含子路徑），`path` 必須是該 repo 底下的單一 skill 路徑（`owner/repo[/bucket]/name`，不可是裸名稱、`..` 或整個分類）；不合法的項目略過並附原因。接著以 modal 列出要安裝的 repo、可能被覆蓋的既有 skill、要停用／啟用的路徑（各清單最多列 10 筆，其餘顯示「另 N 個」），確認後依序執行 ai-global CLI，輸出顯示在 Output 面板的「AI Global Explorer」，完成後自動重新整理：
 
-1. 每個不重複的 `repo` 執行 `ai-global add-skill <repo>`，「是否安裝」「是否覆蓋」都回答 y：**只新增或覆蓋，不刪除任何 skill**。同一個 repo 內 JSON 沒列到的 skill 也會一併安裝（CLI 以 repo 為單位）。
-2. JSON 標「停用」而本機不是停用者執行 `ai-global disable <path>`；JSON 標「啟用」而本機停用者執行 `ai-global enable <path>`。JSON 沒列的 skill 不動；「未投影」不做任何事。
+1. 每個不重複的 `repo` 執行 `ai-global add-skill <repo>`，「是否安裝」回答 y；「是否覆蓋」只有在確認視窗按「匯入並覆蓋既有 skill」時才回答 y，按「只安裝新的 skill」則既有 skill 保持原狀。**不刪除任何 skill**。同一個 repo 內 JSON 沒列到的 skill 也會一併安裝（CLI 以 repo 為單位）。
+2. JSON 標「停用」而本機不是停用者執行 `ai-global disable <path>`；JSON 標「啟用」而本機停用者執行 `ai-global enable <path>`。執行前確認 `v-skills/<path>/SKILL.md` 存在，不是單一 skill 的路徑會略過並列在完成訊息中。JSON 沒列的 skill 不動；「未投影」不做任何事。
 3. 最後執行 `ai-global relink` 重新投影到各工具。
 
-限制：ai-global CLI 固定操作 `~/.ai-global`，所以只有 `aiGlobal.rootPath` 指向 `~/.ai-global` 時才能匯入。執行檔優先使用根目錄裡的 `ai-global`，否則取 PATH 上的 `ai-global`；需要 `git` 可用。既有 skill 會被 repo 內容覆蓋，`v-skills/` 裡未推回 GitHub 的本機修改會遺失。被「整個分類停用」規則涵蓋的 skill 無法單獨啟用，該步驟會失敗並列在完成訊息中。
+限制：ai-global CLI 固定操作 `~/.ai-global`，所以只有 `aiGlobal.rootPath` 指向 `~/.ai-global` 時才能匯入。執行檔優先使用根目錄裡的 `ai-global`，否則取 PATH 上的 `ai-global`；需要 `git` 可用。選擇覆蓋時既有 skill 會被 repo 內容取代，`v-skills/` 裡未推回 GitHub 的本機修改會遺失。被「整個分類停用」規則涵蓋的 skill 無法單獨啟用，該步驟會失敗並列在完成訊息中。
 
 ## 搜尋與更新
 

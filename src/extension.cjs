@@ -12,6 +12,8 @@ const {
   contractHome,
   exportSkills,
   importPlan,
+  listSection,
+  skippedSummary,
   CATEGORIES,
   README_URL,
 } = require("./catalog.cjs");
@@ -199,31 +201,41 @@ class Explorer {
       vscode.window.showErrorMessage(`無法匯入：${error.message}`);
       return { error: error.message };
     }
-    const skipped = plan.skipped.length
-      ? `略過 ${plan.skipped.length} 個沒有 GitHub 來源的 skill：${plan.skipped.map((skill) => skill.name).join("、")}`
-      : "";
+    const skipped = skippedSummary(plan.skipped);
     if (!plan.repos.length && !plan.disable.length && !plan.enable.length) {
       vscode.window.showInformationMessage(
         ["沒有可匯入的項目。", skipped].filter(Boolean).join(" "),
       );
       return { plan };
     }
+    // 覆蓋會刪掉既有 skill 目錄（含未推回 GitHub 的本機修改），必須由使用者明確選擇，不再自動答 y。
+    const overwriteLabel = "匯入並覆蓋既有 skill";
+    const installOnlyLabel = plan.overwrite.length
+      ? "只安裝新的 skill"
+      : "匯入";
     const choice = await vscode.window.showWarningMessage(
       `匯入 ${plan.repos.length} 個 repo 的 skill？`,
       {
         modal: true,
         detail: [
-          ...plan.repos.map((repo) => `• ${repo}`),
-          `停用 ${plan.disable.length} 個、啟用 ${plan.enable.length} 個。`,
+          listSection("安裝 repo（add-skill）", plan.repos),
+          listSection("可能被覆蓋的既有 skill", plan.overwrite),
+          listSection("停用", plan.disable),
+          listSection("啟用", plan.enable),
           skipped,
-          "會執行 ai-global add-skill 並 relink；既有 skill 會被覆蓋，不會刪除任何 skill。",
+          plan.overwrite.length
+            ? `「${overwriteLabel}」會以 repo 內容取代上列既有 skill；「${installOnlyLabel}」會略過它們。最後執行 relink，不會刪除任何 skill。`
+            : "會執行 ai-global add-skill 並 relink，不會刪除任何 skill。",
         ]
           .filter(Boolean)
-          .join("\n"),
+          .join("\n\n"),
       },
-      "匯入",
+      ...(plan.overwrite.length ? [overwriteLabel] : []),
+      installOnlyLabel,
     );
-    if (choice !== "匯入") return { plan };
+    if (choice !== overwriteLabel && choice !== installOnlyLabel)
+      return { plan };
+    const overwrite = choice === overwriteLabel;
     this.importing = true;
     let steps = [];
     try {
@@ -238,6 +250,7 @@ class Explorer {
         (progress, token) =>
           runImport(plan, {
             root: this.root,
+            overwrite,
             cancelled: () => token.isCancellationRequested,
             log: (text) => {
               this.channel.append(text);
@@ -253,17 +266,21 @@ class Explorer {
       this.importing = false;
       await this.refresh();
     }
-    const failed = steps.filter((step) => step.code !== 0);
+    const failed = steps.filter((step) => !step.skipped && step.code !== 0);
+    const skippedSteps = steps.filter((step) => step.skipped);
+    const skippedText = skippedSteps.length
+      ? `略過 ${skippedSteps.length} 個狀態同步（${skippedSteps.map((step) => `${step.args.join(" ")}：${step.skipped}`).join("；")}）。`
+      : "";
     if (failed.length)
       vscode.window
         .showWarningMessage(
-          `匯入完成，但 ${failed.length} 個步驟失敗：${failed.map((step) => step.args.join(" ")).join("；")}`,
+          `匯入完成，但 ${failed.length} 個步驟失敗：${failed.map((step) => step.args.join(" ")).join("；")}${skippedText}`,
           "查看輸出",
         )
         .then((choice) => choice && this.channel.show());
     else
       vscode.window.showInformationMessage(
-        `已匯入 ${plan.repos.length} 個 repo 的 skill，投影已重建。${skipped}`,
+        `已匯入 ${plan.repos.length} 個 repo 的 skill${plan.overwrite.length && !overwrite ? "（未覆蓋既有 skill）" : ""}，投影已重建。${skippedText}${skipped}`,
       );
     return { plan, steps };
   }

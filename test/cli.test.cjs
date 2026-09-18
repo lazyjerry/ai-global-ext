@@ -51,17 +51,24 @@ test("run 剝掉 ANSI 色碼並回傳結束碼", async (t) => {
     run(path.join(root, "missing"), [], { cwd: root, log: () => {} }),
   );
 });
-test("runImport 依序 add-skill（答 y）、disable、enable、relink，並回報失敗步驟", async (t) => {
+async function skillDirs(root, ...vpaths) {
+  for (const vpath of vpaths) {
+    await fs.mkdir(path.join(root, "v-skills", vpath), { recursive: true });
+    await fs.writeFile(path.join(root, "v-skills", vpath, "SKILL.md"), "");
+  }
+}
+test("runImport 依序 add-skill（同意覆蓋時全答 y）、disable、enable、relink，並回報失敗步驟", async (t) => {
   const { root, calls } = await fixture(t);
   const home = path.join(root, "home");
   await fs.mkdir(home);
+  await skillDirs(root, "a/b/one", "a/b/two");
   const steps = await runImport(
     {
       repos: ["https://github.com/a/b", "https://github.com/bad/repo"],
       disable: ["a/b/one"],
       enable: ["a/b/two"],
     },
-    { root, home, log: () => {} },
+    { root, home, log: () => {}, overwrite: true },
   );
   assert.deepEqual(
     steps.map((step) => [step.args.join(" "), step.code]),
@@ -88,5 +95,52 @@ test("取消後不再執行後續步驟", async (t) => {
   assert.deepEqual(
     steps.map((step) => step.args),
     [["add-skill", "https://github.com/a/b"]],
+  );
+});
+test("未同意覆蓋時只答「是否安裝」，覆蓋提示讀到 EOF 取預設 N", async (t) => {
+  const { root, calls } = await fixture(t);
+  const steps = await runImport(
+    { repos: ["https://github.com/a/b"], disable: [], enable: [] },
+    { root, home: root, log: () => {} },
+  );
+  assert.deepEqual(
+    steps.map((step) => [step.args.join(" "), step.code]),
+    [
+      ["add-skill https://github.com/a/b", 0],
+      ["relink", 0],
+    ],
+  );
+  assert.match(await calls(), /answers: \[y\] \[\]\n/);
+  assert.doesNotMatch(await calls(), /answers: \[y\] \[y\]/);
+});
+test("disable／enable 只作用在有 SKILL.md 的單一 skill，分類或不存在的路徑略過不呼叫 CLI", async (t) => {
+  const { root, calls } = await fixture(t);
+  await skillDirs(root, "a/b/bucket/leaf");
+  const logged = [];
+  const steps = await runImport(
+    {
+      repos: [],
+      disable: ["a/b/bucket", "a/b/bucket/leaf"],
+      enable: ["a/b/missing"],
+    },
+    { root, home: root, log: (text) => logged.push(text) },
+  );
+  assert.deepEqual(
+    steps.map((step) => [
+      step.args.join(" "),
+      step.code,
+      Boolean(step.skipped),
+    ]),
+    [
+      ["disable a/b/bucket", null, true],
+      ["disable a/b/bucket/leaf", 0, false],
+      ["enable a/b/missing", null, true],
+      ["relink", 0, false],
+    ],
+  );
+  const invoked = (await calls()).match(/^args: .*$/gm);
+  assert.deepEqual(invoked, ["args: disable a/b/bucket/leaf", "args: relink"]);
+  assert.ok(
+    logged.some((text) => text.includes("略過 ai-global disable a/b/bucket")),
   );
 });
