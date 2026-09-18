@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.11 — 2026-09-19
+
 - README 的「匯出 skill」JSON 範例改用通用佔位路徑 `example-org/example-skills`。
 
 ## 0.1.10 — 2026-09-17
