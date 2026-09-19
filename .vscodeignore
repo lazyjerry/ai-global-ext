@@ -8,3 +8,5 @@ docs/**
 package-lock.json
 .gitignore
 resources/icon.svg
+**/*衝突的複本*
+**/*conflicted copy*
